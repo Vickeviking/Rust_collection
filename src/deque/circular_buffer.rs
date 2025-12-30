@@ -1,4 +1,4 @@
-use std::mem::MaybeUninit;
+use std::{marker::PhantomData, mem::MaybeUninit};
 
 struct CircularBuffer<T> {
     data: Vec<MaybeUninit<T>>,
@@ -8,53 +8,57 @@ struct CircularBuffer<T> {
 
 pub struct Iter<'a, T> {
     buf: &'a CircularBuffer<T>,
-    idx: usize,
-    remaining: usize,
+    idx: usize, //logical index
 }
 
 pub struct IterMut<'a, T> {
-    buf: &'a mut CircularBuffer<T>,
+    buf: *mut CircularBuffer<T>,
     idx: usize,
-    remaining: usize,
+    _marker: PhantomData<&'a mut T>,
 }
 
 pub struct IntoIter<T> {
-    data: Vec<T>,
-    idx: usize,
-    remaining: usize,
+    buf: CircularBuffer<T>,
 }
 
 impl<'a, T> Iterator for Iter<'a, T> {
     type Item = &'a T;
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        let out = self.buf.get(self.idx);
+        self.idx += 1;
+        out
     }
 }
 
 impl<'a, T> Iterator for IterMut<'a, T> {
     type Item = &'a mut T;
+
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        // SAFETY: vi garanterar att varje element endast returneras en gång
+        let item = unsafe { (*self.buf).get_mut(self.idx) };
+
+        self.idx += 1;
+        item
     }
 }
 
 impl<T> Iterator for IntoIter<T> {
     type Item = T;
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        self.buf.pop_front()
     }
 }
 
 impl<T> CircularBuffer<T> {
     //core
-
     /// Wraps around the index to the underlying `data` vec
-    pub fn wrap_index(&self, idx: isize) -> usize {
+    fn wrap_index(&self, idx: isize) -> usize {
         let cap = self.data.len() as isize;
         ((idx % cap + cap) % cap) as usize
     }
 
     /// Calculates logical -> physical index
+    /// Checks capacity bounds, not initiated bounds
     ///
     /// params: logical index  (0..self.len)
     ///
@@ -201,7 +205,10 @@ impl<T> CircularBuffer<T> {
     /// returns:
     ///  - None if the index is out of bounds
     ///  - Some(&mut T) if the index is in bounds
-    pub fn get_mut(&mut self, i: usize) -> Option<&mut T> {
+    ///
+    ///  warning:
+    ///  - aliasing can occur from i.e the same index is fetched multiple times
+    pub unsafe fn get_mut(&mut self, i: usize) -> Option<&mut T> {
         // init bounds check
         if i >= self.len {
             return None;
@@ -215,23 +222,56 @@ impl<T> CircularBuffer<T> {
     //iteration:
 
     pub fn iter(&self) -> Iter<'_, T> {
-        todo!()
+        Iter { buf: self, idx: 0 }
     }
 
     pub fn iter_mut(&mut self) -> IterMut<'_, T> {
-        todo!()
+        IterMut {
+            buf: self as *mut _,
+            idx: 0,
+            _marker: PhantomData,
+        }
     }
 
-    pub fn as_slices(&self) -> (&[T], &[T]) {
-        todo!()
+    pub fn make_contiguous(&mut self) {
+        // check if contiguous
+        if self.len == 0 || self.start == 0 {
+            return;
+        }
+
+        let mut new_data: Vec<MaybeUninit<T>> = Vec::with_capacity(self.capacity());
+        new_data.resize_with(self.capacity(), MaybeUninit::uninit);
+
+        for i in 0..self.len {
+            //SAFETY: i < self.len
+            let old_idx = self.logical_to_physical(i).unwrap();
+            //SAFETY: moving initiated elements
+            let val = unsafe { self.data[old_idx].assume_init_read() };
+            new_data[i].write(val);
+        }
+
+        self.data = new_data;
+        self.start = 0;
     }
 
-    pub fn make_contiguous() {
-        todo!();
-    }
+    pub fn resize(&mut self, new_cap: usize) -> Result<(), ()> {
+        if new_cap <= self.capacity() {
+            return Err(());
+        }
 
-    pub fn resize(new_cap: usize) {
-        todo!();
+        let mut new_data: Vec<MaybeUninit<T>> = Vec::with_capacity(new_cap);
+        new_data.resize_with(new_cap, MaybeUninit::uninit);
+
+        for i in 0..self.len {
+            let old_idx = self.logical_to_physical(i).unwrap();
+            let val = unsafe { self.data[old_idx].assume_init_read() };
+            new_data[i].write(val);
+        }
+
+        self.data = new_data;
+        self.start = 0;
+
+        Ok(())
     }
 }
 
@@ -239,7 +279,23 @@ impl<T> IntoIterator for CircularBuffer<T> {
     type Item = T;
     type IntoIter = IntoIter<T>;
     fn into_iter(self) -> Self::IntoIter {
-        todo!()
+        IntoIter { buf: self }
+    }
+}
+
+impl<T> FromIterator<T> for CircularBuffer<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let mut buf = CircularBuffer::with_capacity(4);
+        for val in iter {
+            if buf.is_full() {
+                buf.resize(buf.capacity() * 2).expect("capacity growing");
+            }
+            //SAFETY: fit guaranted
+            unsafe {
+                buf.push_back(val).unwrap_unchecked();
+            }
+        }
+        buf
     }
 }
 
@@ -328,6 +384,7 @@ mod tests {
 
         assert!(buffer.is_empty());
     }
+
     #[test]
     fn test_get() {
         let mut buffer: CircularBuffer<u32> = CircularBuffer::with_capacity(5);
@@ -350,7 +407,7 @@ mod tests {
         buffer.push_back(2).unwrap();
         buffer.push_back(3).unwrap();
 
-        if let Some(x) = buffer.get_mut(1) {
+        if let Some(x) = unsafe { buffer.get_mut(1) } {
             *x = 42; // mutate in place
         }
 
@@ -358,5 +415,139 @@ mod tests {
         assert_eq!(buffer.get(1), Some(&42));
         assert_eq!(buffer.get(2), Some(&3));
         assert_eq!(buffer.get(3), None); // out of bounds
+    }
+
+    #[test]
+    fn test_iter() {
+        let mut buffer = CircularBuffer::with_capacity(5);
+        for i in 1..=3 {
+            buffer.push_back(i).unwrap();
+        }
+
+        let collected: Vec<_> = buffer.iter().copied().collect();
+        assert_eq!(collected, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_iter_mut() {
+        let mut buffer = CircularBuffer::with_capacity(5);
+        for i in 1..=3 {
+            buffer.push_back(i).unwrap();
+        }
+
+        for x in buffer.iter_mut() {
+            *x *= 2;
+        }
+
+        let collected: Vec<_> = buffer.iter().copied().collect();
+        assert_eq!(collected, vec![2, 4, 6]);
+    }
+
+    #[test]
+    fn test_into_iter() {
+        let mut buffer = CircularBuffer::with_capacity(5);
+        for i in 1..=3 {
+            buffer.push_back(i).unwrap();
+        }
+
+        let collected: Vec<_> = buffer.into_iter().collect();
+        assert_eq!(collected, vec![1, 2, 3]);
+    }
+    #[test]
+    fn test_from_iterator() {
+        use std::iter::FromIterator;
+
+        let vec = vec![1, 2, 3, 4, 5];
+
+        let buffer: CircularBuffer<_> = CircularBuffer::from_iter(vec.clone());
+
+        // Kontrollera längd
+        assert_eq!(buffer.len(), vec.len());
+
+        // Kontrollera innehåll
+        for (i, &val) in vec.iter().enumerate() {
+            assert_eq!(buffer.get(i), Some(&val));
+        }
+    }
+
+    #[test]
+    fn test_make_contiguous_no_wrap() {
+        let mut buf: CircularBuffer<u32> = CircularBuffer::with_capacity(5);
+        for i in 1..=3 {
+            buf.push_back(i).unwrap();
+        }
+
+        buf.make_contiguous();
+        assert_eq!(buf.start, 0);
+        for i in 0..buf.len() {
+            assert_eq!(buf.get(i), Some(&(i as u32 + 1)));
+        }
+    }
+
+    #[test]
+    fn test_make_contiguous_with_wrap() {
+        let mut buf: CircularBuffer<u32> = CircularBuffer::with_capacity(5);
+        for i in 1..=5 {
+            buf.push_back(i).unwrap();
+        }
+
+        buf.pop_front(); // start flyttas
+        buf.pop_front(); // wraparound start
+        buf.push_back(6).unwrap();
+        buf.push_back(7).unwrap();
+
+        buf.make_contiguous();
+        assert_eq!(buf.start, 0);
+        let expected = [3, 4, 5, 6, 7];
+        for (i, &val) in expected.iter().enumerate() {
+            assert_eq!(buf.get(i), Some(&val));
+        }
+    }
+
+    #[test]
+    fn test_resize_larger() {
+        let mut buf: CircularBuffer<u32> = CircularBuffer::with_capacity(4);
+        for i in 1..=4 {
+            buf.push_back(i).unwrap();
+        }
+
+        let old_capacity = buf.capacity();
+        buf.resize(8).unwrap();
+        assert!(buf.capacity() >= 8);
+        assert_eq!(buf.len(), 4);
+
+        for i in 0..buf.len() {
+            assert_eq!(buf.get(i), Some(&(i as u32 + 1)));
+        }
+
+        // Push extra elements to test new capacity
+        buf.push_back(5).unwrap();
+        buf.push_back(6).unwrap();
+        assert_eq!(buf.len(), 6);
+    }
+
+    #[test]
+    fn test_resize_with_wrap() {
+        let mut buf: CircularBuffer<u32> = CircularBuffer::with_capacity(4);
+        for i in 1..=4 {
+            buf.push_back(i).unwrap();
+        }
+
+        buf.pop_front();
+        buf.pop_front();
+        buf.push_back(5).unwrap();
+        buf.push_back(6).unwrap(); // wraparound
+
+        buf.resize(8).unwrap();
+        assert_eq!(buf.start, 0);
+        let expected = [3, 4, 5, 6];
+        for (i, &val) in expected.iter().enumerate() {
+            assert_eq!(buf.get(i), Some(&val));
+        }
+
+        // Test push after resize
+        buf.push_back(7).unwrap();
+        buf.push_back(8).unwrap();
+        assert_eq!(buf.len(), 6);
     }
 }
