@@ -221,10 +221,12 @@ impl<T> CircularBuffer<T> {
 
     //iteration:
 
+    //TODO: dont expose internal iter struct
     pub fn iter(&self) -> Iter<'_, T> {
         Iter { buf: self, idx: 0 }
     }
 
+    //TODO: dont expose internal iter struct
     pub fn iter_mut(&mut self) -> IterMut<'_, T> {
         IterMut {
             buf: self as *mut _,

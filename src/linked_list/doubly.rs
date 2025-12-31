@@ -134,8 +134,8 @@ impl<T: Copy> DoublyLinkedList<T> {
         self.len == 0
     }
 
-    pub fn iter(&self) -> DoublyIter<'_, T> {
-        DoublyIter {
+    pub fn iter(&self) -> Iter<'_, T> {
+        Iter {
             next: self.head.clone(),
             marker: std::marker::PhantomData,
         }
@@ -144,10 +144,10 @@ impl<T: Copy> DoublyLinkedList<T> {
 
 impl<T: Copy> IntoIterator for DoublyLinkedList<T> {
     type Item = T;
-    type IntoIter = DoublyIntoIter<T>;
+    type IntoIter = IntoIter<T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        DoublyIntoIter {
+        IntoIter {
             next: self.head,
             prev: self.tail,
         }
@@ -164,12 +164,12 @@ impl<T: Copy> FromIterator<T> for DoublyLinkedList<T> {
     }
 }
 
-pub struct DoublyIntoIter<T> {
+pub struct IntoIter<T> {
     next: Option<Rc<RefCell<Node<T>>>>,
     prev: Option<Rc<RefCell<Node<T>>>>,
 }
 
-impl<T: Copy> Iterator for DoublyIntoIter<T> {
+impl<T: Copy> Iterator for IntoIter<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -181,7 +181,7 @@ impl<T: Copy> Iterator for DoublyIntoIter<T> {
     }
 }
 
-impl<T: Copy> DoubleEndedIterator for DoublyIntoIter<T> {
+impl<T: Copy> DoubleEndedIterator for IntoIter<T> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.prev.take().map(|rc_node| {
             let node = rc_node.borrow();
@@ -191,12 +191,12 @@ impl<T: Copy> DoubleEndedIterator for DoublyIntoIter<T> {
     }
 }
 
-pub struct DoublyIter<'a, T> {
+pub struct Iter<'a, T> {
     next: Option<Rc<RefCell<Node<T>>>>,
     marker: std::marker::PhantomData<&'a T>,
 }
 
-impl<'a, T: Copy> Iterator for DoublyIter<'a, T> {
+impl<'a, T: Copy> Iterator for Iter<'a, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {

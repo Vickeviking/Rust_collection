@@ -45,8 +45,8 @@ impl<T> SinglyLinkedList<T> {
     }
 
     // by reference, non owning
-    pub fn iter(&self) -> SinglyIter<'_, T> {
-        SinglyIter {
+    pub fn iter(&self) -> Iter<'_, T> {
+        Iter {
             curr: self.root.as_deref(),
         }
     }
@@ -55,10 +55,10 @@ impl<T> SinglyLinkedList<T> {
 //=== Iterators ===
 impl<T> IntoIterator for SinglyLinkedList<T> {
     type Item = T;
-    type IntoIter = SinglyIntoIter<T>;
+    type IntoIter = IntoIter<T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        SinglyIntoIter { curr: self.root }
+        IntoIter { curr: self.root }
     }
 }
 
@@ -72,11 +72,11 @@ impl<T> FromIterator<T> for SinglyLinkedList<T> {
     }
 }
 
-struct SinglyIter<'a, T> {
+struct Iter<'a, T> {
     curr: Option<&'a Node<T>>,
 }
 
-impl<'a, T> Iterator for SinglyIter<'a, T> {
+impl<'a, T> Iterator for Iter<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -86,11 +86,11 @@ impl<'a, T> Iterator for SinglyIter<'a, T> {
     }
 }
 
-pub struct SinglyIntoIter<T> {
+pub struct IntoIter<T> {
     curr: Link<T>,
 }
 
-impl<T> Iterator for SinglyIntoIter<T> {
+impl<T> Iterator for IntoIter<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
