@@ -19,13 +19,13 @@ impl<T: fmt::Debug + Copy> fmt::Debug for Node<T> {
 }
 
 #[derive(Default)]
-struct BTree<T> {
+struct BSTree<T> {
     root: Link<T>,
 }
 
-impl<T> BTree<T> {
+impl<T> BSTree<T> {
     pub fn new() -> Self {
-        BTree { root: None }
+        BSTree { root: None }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -33,7 +33,7 @@ impl<T> BTree<T> {
     }
 }
 
-impl<T: Ord + Default> BTree<T> {
+impl<T: Ord + Default> BSTree<T> {
     //returns Option <PrevNode, val_(is/should be)_to_right of prev, exact_val_found >
     //None if empty
     //if PrevNode none, then we are removing/inserting root
@@ -208,31 +208,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_build_btree() {
-        let btree: BTree<i32> = BTree::new();
-        assert!(btree.root.is_none());
-        assert!(btree.is_empty());
+    fn test_build_bstree() {
+        let bstree: BSTree<i32> = BSTree::new();
+        assert!(bstree.root.is_none());
+        assert!(bstree.is_empty());
     }
 
     #[test]
     fn test_insert() {
-        let mut btree: BTree<i32> = BTree::new();
-        let _ = btree.insert(1);
-        assert!(btree.contains(&1));
-        assert!(!btree.is_empty());
+        let mut bstree: BSTree<i32> = BSTree::new();
+        let _ = bstree.insert(1);
+        assert!(bstree.contains(&1));
+        assert!(!bstree.is_empty());
 
         let nums = vec![
             10, 2, 5, 12, 14, 16, 3, 90, 124, 156, 180, 123, 124, 345, 456,
         ];
         for i in nums {
-            let _ = btree.insert(i);
-            assert!(btree.contains(&i));
+            let _ = bstree.insert(i);
+            assert!(bstree.contains(&i));
         }
     }
 
     #[test]
     fn test_insert_big_dataset() {
-        let mut btree: BTree<i32> = BTree::new();
+        let mut bstree: BSTree<i32> = BSTree::new();
         let big_dataset: Vec<i32> = (0..10000).collect();
         let mut iter = big_dataset.split(|n| *n == 5000);
 
@@ -249,21 +249,21 @@ mod tests {
             .collect();
 
         for i in scrambled {
-            let _ = btree.insert(i);
-            assert!(btree.contains(&i));
+            let _ = bstree.insert(i);
+            assert!(bstree.contains(&i));
         }
     }
 
     #[test]
     fn test_insert_bad() {
-        let mut btree: BTree<i32> = BTree::new();
-        let _ = btree.insert(1);
-        assert!(!btree.insert(1));
+        let mut bstree: BSTree<i32> = BSTree::new();
+        let _ = bstree.insert(1);
+        assert!(!bstree.insert(1));
     }
 
     #[test]
     fn test_remove_leaf() {
-        let mut tree = BTree::new();
+        let mut tree = BSTree::new();
         tree.insert(10);
         tree.insert(5);
         tree.insert(15);
@@ -274,7 +274,7 @@ mod tests {
 
     #[test]
     fn test_remove_one_child() {
-        let mut tree = BTree::new();
+        let mut tree = BSTree::new();
         tree.insert(10);
         tree.insert(5);
         tree.insert(3); // left child of 5
@@ -286,7 +286,7 @@ mod tests {
 
     #[test]
     fn test_remove_two_children() {
-        let mut tree = BTree::new();
+        let mut tree = BSTree::new();
         tree.insert(10);
         tree.insert(5);
         tree.insert(15);
@@ -301,7 +301,7 @@ mod tests {
 
     #[test]
     fn test_remove_root() {
-        let mut tree = BTree::new();
+        let mut tree = BSTree::new();
         tree.insert(10);
         tree.insert(5);
         tree.insert(15);
@@ -317,7 +317,7 @@ mod tests {
         let nums = vec![
             10, 2, 5, 12, 14, 16, 3, 90, 124, 156, 180, 123, 124, 345, 456,
         ];
-        let mut tree = BTree::new();
+        let mut tree = BSTree::new();
         for &n in &nums {
             tree.insert(n);
         }
